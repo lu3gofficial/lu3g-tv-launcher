@@ -1,0 +1,1 @@
+screensaver_components precedente (Sony VH22, 30/10/2026): com.google.android.apps.tv.dreamx/.service.Backdrop
