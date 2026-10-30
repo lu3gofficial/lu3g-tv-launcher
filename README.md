@@ -74,8 +74,8 @@ python3 -I tools/gen_splash_sound.py /tmp/wav && for f in /tmp/wav/*.wav; do afc
 
 ## Aggiornamenti
 
-Il launcher controlla le release di `lu3gofficial/lu3g-tv-launcher` su GitHub all'avvio e ogni 12 ore
-(API pubblica, nessuna chiave). Se c'è una versione più nuova compare il chip **Aggiorna a X** in alto;
+Il launcher legge le release di `lu3gofficial/lu3g-tv-launcher` su GitHub all'avvio e ogni 12 ore
+(API pubblica, nessuna chiave) e sceglie la versione più alta tra quelle pubblicate (bozze e pre-release escluse). Se c'è una versione più nuova compare il chip **Aggiorna a X** in alto;
 da lì scarica l'APK allegato alla release e lo installa con il PackageInstaller di Android (la TV può
 chiedere una conferma). Nel pannello Tema c'è anche "Versione … · Controlla aggiornamenti".
 
