@@ -2,7 +2,7 @@ package it.lu3g.tvlauncher.update
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
+import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -18,31 +18,40 @@ object UpdateChecker {
     const val RELEASES_URL = "https://github.com/$REPO/releases"
 
     suspend fun check(currentVersion: String): UpdateInfo? = withContext(Dispatchers.IO) {
-        val conn = (URL("https://api.github.com/repos/$REPO/releases/latest").openConnection() as HttpURLConnection).apply {
+        // Non "latest" (che per GitHub è l'ultima creata), ma la versione più alta tra le release
+        // pubblicate, saltando bozze e pre-release: così l'ordine di pubblicazione non conta.
+        val conn = (URL("https://api.github.com/repos/$REPO/releases?per_page=15").openConnection() as HttpURLConnection).apply {
             connectTimeout = 8_000
             readTimeout = 8_000
             setRequestProperty("Accept", "application/vnd.github+json")
             setRequestProperty("User-Agent", "LU3G-TV/$currentVersion")
         }
         try {
-            if (conn.responseCode == 404) return@withContext null // nessuna release ancora
+            if (conn.responseCode == 404) return@withContext null // repository o release assenti
             if (conn.responseCode != 200) error("HTTP ${conn.responseCode}")
-            val json = JSONObject(conn.inputStream.bufferedReader().readText())
-            val tag = json.optString("tag_name").removePrefix("v").trim()
-            if (tag.isEmpty() || !isNewer(tag, currentVersion)) return@withContext null
-            val assets = json.optJSONArray("assets") ?: return@withContext null
-            for (i in 0 until assets.length()) {
-                val a = assets.getJSONObject(i)
-                if (a.optString("name").endsWith(".apk", ignoreCase = true)) {
-                    return@withContext UpdateInfo(
-                        version = tag,
-                        apkUrl = a.optString("browser_download_url"),
-                        notes = json.optString("body").trim(),
-                        size = a.optLong("size"),
-                    )
+            val releases = JSONArray(conn.inputStream.bufferedReader().readText())
+            var best: UpdateInfo? = null
+            for (r in 0 until releases.length()) {
+                val json = releases.getJSONObject(r)
+                if (json.optBoolean("draft") || json.optBoolean("prerelease")) continue
+                val tag = json.optString("tag_name").removePrefix("v").trim()
+                if (tag.isEmpty() || !isNewer(tag, currentVersion)) continue
+                if (best != null && !isNewer(tag, best.version)) continue
+                val assets = json.optJSONArray("assets") ?: continue
+                for (i in 0 until assets.length()) {
+                    val a = assets.getJSONObject(i)
+                    if (a.optString("name").endsWith(".apk", ignoreCase = true)) {
+                        best = UpdateInfo(
+                            version = tag,
+                            apkUrl = a.optString("browser_download_url"),
+                            notes = json.optString("body").trim(),
+                            size = a.optLong("size"),
+                        )
+                        break
+                    }
                 }
             }
-            null
+            best
         } finally {
             conn.disconnect()
         }

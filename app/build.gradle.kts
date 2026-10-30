@@ -22,8 +22,8 @@ android {
         applicationId = "it.lu3g.tvlauncher"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.1.2"
     }
 
     signingConfigs {
