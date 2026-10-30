@@ -29,8 +29,8 @@
     <string name="chip_ok_long">OK a lungo</string>
     <string name="chip_open">Apri</string>
     <string name="chip_options">Opzioni</string>
-    <string name="theme_button">Tema</string>
-    <string name="theme_title">Tema del launcher</string>
+    <string name="theme_button">Opzioni</string>
+    <string name="theme_title">Opzioni LU3G TV</string>
     <string name="theme_effects">Effetti stagionali</string>
     <string name="theme_on">Attivi: decorazioni e colori seguono il calendario</string>
     <string name="theme_off">Disattivi: solo il tema LU3G</string>
@@ -58,4 +58,23 @@
     <string name="update_failed_check">Controllo non riuscito: verifica la connessione</string>
     <string name="update_found">Disponibile la versione %1$s</string>
     <string name="version_label">Versione %1$s</string>
+    <string name="voice_settings_title">Assistente vocale</string>
+    <string name="voice_settings_hint">Pausa caffè e altri avvisi parlati</string>
+    <string name="voice_enabled">Avvisi vocali</string>
+    <string name="voice_on">Attivi</string>
+    <string name="voice_off">Disattivi</string>
+    <string name="voice_interval">Pausa caffè ogni</string>
+    <string name="voice_interval_value">%1$d minuti</string>
+    <string name="voice_quiet">Orario di silenzio</string>
+    <string name="voice_voice">Voce</string>
+    <string name="voice_default">Predefinita del sistema</string>
+    <string name="voice_tone">Tono</string>
+    <string name="voice_volume">Volume</string>
+    <string name="voice_volume_value">%1$d%%</string>
+    <string name="voice_preview">Ascolta un esempio</string>
+    <string name="voice_categories">Categorie</string>
+    <string name="voice_show_now">Mostra adesso la pausa caffè</string>
+    <string name="voice_no_tts">Sintesi vocale non disponibile su questa TV: resta l\'avviso a schermo</string>
+    <string name="break_go">Vado!</string>
+    <string name="break_snooze">Tra 10 minuti</string>
 </resources>

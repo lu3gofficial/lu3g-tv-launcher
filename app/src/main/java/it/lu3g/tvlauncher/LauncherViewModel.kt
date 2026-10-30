@@ -18,6 +18,14 @@ import it.lu3g.tvlauncher.update.UpdateChecker
 import it.lu3g.tvlauncher.update.UpdateInfo
 import it.lu3g.tvlauncher.update.UpdateInstaller
 import it.lu3g.tvlauncher.update.UpdateState
+import it.lu3g.tvlauncher.voice.BREAK_INTERVALS
+import it.lu3g.tvlauncher.voice.BreakScheduler
+import it.lu3g.tvlauncher.voice.QuietHours
+import it.lu3g.tvlauncher.voice.VOICE_VOLUMES
+import it.lu3g.tvlauncher.voice.VoiceAssistant
+import it.lu3g.tvlauncher.voice.VoiceCategory
+import it.lu3g.tvlauncher.voice.VoiceSettings
+import it.lu3g.tvlauncher.voice.VoiceTone
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -125,6 +133,83 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // --- Assistente vocale: pausa caffè e altre categorie ---
+    private val assistant = VoiceAssistant(app)
+    private val scheduler = BreakScheduler()
+    private val foreground = MutableStateFlow(false)
+    val voiceSettings: StateFlow<VoiceSettings> = prefs.voiceSettings
+    private val _breakPrompt = MutableStateFlow<Pair<VoiceCategory, String>?>(null)
+    /** Pausa proposta in questo momento (categoria e frase), o null. */
+    val breakPrompt: StateFlow<Pair<VoiceCategory, String>?> = _breakPrompt
+    private val _voiceSettingsOpen = MutableStateFlow(false)
+    val voiceSettingsOpen: StateFlow<Boolean> = _voiceSettingsOpen
+
+    /** Voci italiane disponibili (nome tecnico, etichetta leggibile). */
+    fun italianVoices(): List<Pair<String, String>> = assistant.italianVoices().mapIndexed { i, v ->
+        v.name to ("Voce ${i + 1}" + if (v.isNetworkConnectionRequired) " · online" else "")
+    }
+    fun ttsAvailable(): Boolean = assistant.italianVoices().isNotEmpty()
+
+    fun setForeground(value: Boolean) { foreground.value = value }
+    fun openVoiceSettings() { _voiceSettingsOpen.value = true }
+    fun closeVoiceSettings() { _voiceSettingsOpen.value = false }
+
+    fun setVoiceEnabled(enabled: Boolean) = prefs.updateVoice { it.copy(enabled = enabled) }
+    fun cycleInterval() = prefs.updateVoice { s -> s.copy(intervalMin = BREAK_INTERVALS[(BREAK_INTERVALS.indexOf(s.intervalMin) + 1).mod(BREAK_INTERVALS.size)]) }
+    fun cycleQuiet() = prefs.updateVoice { s -> s.copy(quiet = QuietHours.entries[(s.quiet.ordinal + 1) % QuietHours.entries.size]) }
+    fun cycleTone() = prefs.updateVoice { s -> s.copy(tone = VoiceTone.entries[(s.tone.ordinal + 1) % VoiceTone.entries.size]) }
+    fun cycleVolume() = prefs.updateVoice { s -> s.copy(volume = VOICE_VOLUMES[(VOICE_VOLUMES.indexOfFirst { it >= s.volume - 0.01f } + 1).mod(VOICE_VOLUMES.size)]) }
+    fun cycleVoice() = prefs.updateVoice { s ->
+        val names = italianVoices().map { it.first }
+        val next = if (names.isEmpty()) null else names.getOrNull(names.indexOf(s.voiceName) + 1) // oltre l'ultima: predefinita
+        s.copy(voiceName = next)
+    }
+    fun toggleCategory(c: VoiceCategory) = prefs.updateVoice { s -> s.copy(categories = if (c.id in s.categories) s.categories - c.id else s.categories + c.id) }
+
+    fun previewVoice() = speak(VoiceCategory.COFFEE.randomPhrase())
+    fun showBreakNow() = showBreak(VoiceCategory.COFFEE)
+
+    private fun showBreak(category: VoiceCategory) {
+        val phrase = category.randomPhrase()
+        scheduler.onShown(System.currentTimeMillis(), category)
+        _breakPrompt.value = category to phrase
+        speak(phrase)
+        viewModelScope.launch {
+            delay(25_000)
+            if (_breakPrompt.value?.second == phrase) ignoreBreak()
+        }
+    }
+
+    fun confirmBreak() {
+        val current = _breakPrompt.value ?: return
+        scheduler.onConfirm(System.currentTimeMillis())
+        _breakPrompt.value = null
+        speak(current.first.confirm)
+    }
+
+    fun snoozeBreak() {
+        scheduler.onSnooze(System.currentTimeMillis())
+        _breakPrompt.value = null
+        speak(VoiceCategory.SNOOZE_PHRASE)
+    }
+
+    fun ignoreBreak() {
+        if (_breakPrompt.value == null) return
+        scheduler.onIgnore(System.currentTimeMillis())
+        _breakPrompt.value = null
+        assistant.stop()
+    }
+
+    private fun speak(text: String) {
+        val s = voiceSettings.value
+        if (s.enabled) assistant.speak(text, s.voiceName, s.tone, s.volume)
+    }
+
+    override fun onCleared() {
+        assistant.shutdown()
+        super.onCleared()
+    }
+
     private val _showSplash = MutableStateFlow(true)
     /** Splash visibile: al primo avvio e a ogni risveglio della TV dallo standby. */
     val showSplash: StateFlow<Boolean> = _showSplash
@@ -173,6 +258,18 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refresh()
+        // Pianificatore delle pause: controllo ogni 30 secondi, mai sopra altre finestre
+        viewModelScope.launch {
+            while (true) {
+                delay(30_000)
+                val s = voiceSettings.value
+                val quiet = _breakPrompt.value != null || _voiceSettingsOpen.value || _themeSettingsOpen.value ||
+                    menuFor.value != null || _showSplash.value
+                if (!s.enabled || quiet) continue
+                scheduler.due(System.currentTimeMillis(), foreground.value, s.intervalMin, s.quiet, s.categories)
+                    ?.let { showBreak(it) }
+            }
+        }
         // Controllo aggiornamenti: poco dopo l'avvio, poi ogni 12 ore
         viewModelScope.launch {
             delay(15_000)

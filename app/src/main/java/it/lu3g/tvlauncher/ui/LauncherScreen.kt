@@ -69,6 +69,8 @@ import it.lu3g.tvlauncher.data.TvInput
 import it.lu3g.tvlauncher.ui.components.AnimatedBackground
 import it.lu3g.tvlauncher.ui.components.AppCard
 import it.lu3g.tvlauncher.ui.components.AppMenuDialog
+import it.lu3g.tvlauncher.ui.components.CoffeeBreakDialog
+import it.lu3g.tvlauncher.ui.components.VoiceSettingsDialog
 import it.lu3g.tvlauncher.ui.components.Hero
 import it.lu3g.tvlauncher.ui.components.HeroInfo
 import it.lu3g.tvlauncher.ui.components.SeasonalLayer
@@ -139,6 +141,9 @@ fun LauncherScreen(vm: LauncherViewModel) {
     val updateState by vm.updateState.collectAsStateWithLifecycle()
     val updateDialogOpen by vm.updateDialogOpen.collectAsStateWithLifecycle()
     val updateHint by vm.updateHint.collectAsStateWithLifecycle()
+    val breakPrompt by vm.breakPrompt.collectAsStateWithLifecycle()
+    val voiceSettingsOpen by vm.voiceSettingsOpen.collectAsStateWithLifecycle()
+    val voiceSettings by vm.voiceSettings.collectAsStateWithLifecycle()
 
     // Animazione di apertura: la card "vola" verso il centro mentre la home si allontana e si scurisce
     val cardBounds = remember { HashMap<String, Rect>() }
@@ -259,6 +264,37 @@ fun LauncherScreen(vm: LauncherViewModel) {
                 versionLabel = stringResource(R.string.version_label, BuildConfig.VERSION_NAME),
                 updateHint = updateHint,
                 onCheckUpdates = { vm.checkForUpdates(manual = true) },
+                onVoiceSettings = { vm.closeThemeSettings(); vm.openVoiceSettings() },
+            )
+        }
+
+        if (voiceSettingsOpen) {
+            val voices = remember { vm.italianVoices() }
+            val ttsAvailable = remember { vm.ttsAvailable() }
+            VoiceSettingsDialog(
+                settings = voiceSettings,
+                voices = voices,
+                ttsAvailable = ttsAvailable,
+                onDismiss = vm::closeVoiceSettings,
+                onToggleEnabled = { vm.setVoiceEnabled(!voiceSettings.enabled) },
+                onCycleInterval = vm::cycleInterval,
+                onCycleQuiet = vm::cycleQuiet,
+                onCycleVoice = vm::cycleVoice,
+                onCycleTone = vm::cycleTone,
+                onCycleVolume = vm::cycleVolume,
+                onPreview = vm::previewVoice,
+                onToggleCategory = vm::toggleCategory,
+                onShowNow = { vm.closeVoiceSettings(); vm.showBreakNow() },
+            )
+        }
+
+        breakPrompt?.let { (category, phrase) ->
+            CoffeeBreakDialog(
+                category = category,
+                phrase = phrase,
+                onConfirm = vm::confirmBreak,
+                onSnooze = vm::snoozeBreak,
+                onDismiss = vm::ignoreBreak,
             )
         }
 

@@ -88,6 +88,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        vm.setForeground(true)
+    }
+
+    override fun onPause() {
+        vm.setForeground(false)
+        super.onPause()
+    }
+
     override fun onStop() {
         // Schermo già spento quando veniamo fermati: è lo standby, non un'altra app
         stoppedForStandby = !powerManager.isInteractive

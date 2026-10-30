@@ -28,6 +28,16 @@ pensato per TV con Android 12 e SoC economici.
   si allontana e si scurisce (340 ms); l'app parte sopra e l'effetto svanisce da solo, così al ritorno
   la home è già pulita. Tutto in trasformazioni di livello, senza ricomposizioni per fotogramma.
 
+## Assistente vocale: pausa caffè
+
+Un assistente simpatico che, con la sintesi vocale di Android in italiano, propone una pausa dopo l'intervallo
+scelto. Sulla home compare una tazzina animata con il vapore, la frase e i tasti **Vado!** / **Tra 10 minuti**.
+Comportamento: parla solo quando la home è in primo piano (mai sopra un film o una videochiamata), rispetta
+l'orario di silenzio, se lo ignori allunga l'intervallo (fino al triplo), si può rimandare di dieci minuti.
+Opzioni (pulsante **Opzioni** → Assistente vocale): attivazione, intervallo, silenzio, voce, tono, volume,
+anteprima, categorie, "Mostra adesso". Categorie: `voice/VoiceCategories.kt` (Pausa caffè, Pausa pranzo);
+per aggiungerne una basta una nuova voce con frasi e regola. Preferenze: `voice_*`.
+
 ## Temi stagionali
 
 Il launcher si veste da solo in base al calendario (pulsante **Tema** in alto per spegnere gli effetti o forzare un tema):

@@ -2,6 +2,9 @@ package it.lu3g.tvlauncher.data
 
 import android.content.Context
 import it.lu3g.tvlauncher.theme.SeasonId
+import it.lu3g.tvlauncher.voice.QuietHours
+import it.lu3g.tvlauncher.voice.VoiceSettings
+import it.lu3g.tvlauncher.voice.VoiceTone
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -39,6 +42,37 @@ class Prefs(context: Context) {
     fun setSeasonChoice(id: SeasonId) {
         sp.edit().putString(KEY_SEASON, id.name).apply()
         _seasonChoice.value = id
+    }
+
+    private val _voice = MutableStateFlow(readVoice())
+    /** Impostazioni dell'assistente vocale. */
+    val voiceSettings: StateFlow<VoiceSettings> = _voice
+
+    fun updateVoice(transform: (VoiceSettings) -> VoiceSettings) {
+        val v = transform(_voice.value)
+        sp.edit()
+            .putBoolean(KEY_VOICE_ENABLED, v.enabled)
+            .putInt(KEY_VOICE_INTERVAL, v.intervalMin)
+            .putString(KEY_VOICE_QUIET, v.quiet.name)
+            .putString(KEY_VOICE_NAME, v.voiceName)
+            .putString(KEY_VOICE_TONE, v.tone.name)
+            .putFloat(KEY_VOICE_VOLUME, v.volume)
+            .putString(KEY_VOICE_CATEGORIES, v.categories.joinToString(SEP))
+            .apply()
+        _voice.value = v
+    }
+
+    private fun readVoice(): VoiceSettings {
+        val d = VoiceSettings()
+        return VoiceSettings(
+            enabled = sp.getBoolean(KEY_VOICE_ENABLED, d.enabled),
+            intervalMin = sp.getInt(KEY_VOICE_INTERVAL, d.intervalMin),
+            quiet = runCatching { QuietHours.valueOf(sp.getString(KEY_VOICE_QUIET, null) ?: d.quiet.name) }.getOrDefault(d.quiet),
+            voiceName = sp.getString(KEY_VOICE_NAME, null),
+            tone = runCatching { VoiceTone.valueOf(sp.getString(KEY_VOICE_TONE, null) ?: d.tone.name) }.getOrDefault(d.tone),
+            volume = sp.getFloat(KEY_VOICE_VOLUME, d.volume),
+            categories = sp.getString(KEY_VOICE_CATEGORIES, null)?.split(SEP)?.filter { it.isNotBlank() }?.toSet() ?: d.categories,
+        )
     }
 
     fun toggleFavorite(pkg: String) {
@@ -86,6 +120,13 @@ class Prefs(context: Context) {
         const val KEY_RECENTS = "recents"
         const val KEY_SEASONAL = "seasonal_enabled"
         const val KEY_SEASON = "season_choice"
+        const val KEY_VOICE_ENABLED = "voice_enabled"
+        const val KEY_VOICE_INTERVAL = "voice_interval"
+        const val KEY_VOICE_QUIET = "voice_quiet"
+        const val KEY_VOICE_NAME = "voice_name"
+        const val KEY_VOICE_TONE = "voice_tone"
+        const val KEY_VOICE_VOLUME = "voice_volume"
+        const val KEY_VOICE_CATEGORIES = "voice_categories"
         const val SEP = "|"
         const val MAX_RECENTS = 12
     }

@@ -58,6 +58,7 @@ fun ThemeSettingsDialog(
     versionLabel: String,
     updateHint: String?,
     onCheckUpdates: () -> Unit,
+    onVoiceSettings: () -> Unit,
 ) {
     val first = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -112,6 +113,12 @@ fun ThemeSettingsDialog(
                     )
                 }
                 Spacer(Modifier.height(6.dp))
+                ThemeItem(
+                    title = stringResource(R.string.voice_settings_title),
+                    supporting = stringResource(R.string.voice_settings_hint),
+                    checked = false,
+                    onClick = onVoiceSettings,
+                )
                 ThemeItem(
                     title = versionLabel,
                     supporting = updateHint ?: stringResource(R.string.update_check),
