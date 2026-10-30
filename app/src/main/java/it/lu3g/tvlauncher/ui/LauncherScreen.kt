@@ -2,11 +2,16 @@ package it.lu3g.tvlauncher.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +24,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -34,7 +41,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
@@ -68,10 +83,12 @@ import it.lu3g.tvlauncher.ui.theme.Fog
 import it.lu3g.tvlauncher.ui.theme.GUTTER
 import it.lu3g.tvlauncher.ui.theme.Ink
 import it.lu3g.tvlauncher.ui.theme.Silver
+import it.lu3g.tvlauncher.ui.theme.Surface1
 import it.lu3g.tvlauncher.ui.theme.Surface2
 import it.lu3g.tvlauncher.ui.theme.Surface3
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /**
  * Scorrimento verticale "da TV", calcolato conoscendo la posizione attuale:
@@ -123,6 +140,34 @@ fun LauncherScreen(vm: LauncherViewModel) {
     val updateDialogOpen by vm.updateDialogOpen.collectAsStateWithLifecycle()
     val updateHint by vm.updateHint.collectAsStateWithLifecycle()
 
+    // Animazione di apertura: la card "vola" verso il centro mentre la home si allontana e si scurisce
+    val cardBounds = remember { HashMap<String, Rect>() }
+    var launching by remember { mutableStateOf<Pair<AppEntry, Rect>?>(null) }
+    val launchProgress = remember { Animatable(0f) }
+    val onLaunch: (AppEntry) -> Unit = { app ->
+        if (launching == null) {
+            val bounds = cardBounds[app.packageName]
+            if (bounds == null) {
+                vm.launch(app)
+            } else {
+                // La card a fuoco è disegnata ingrandita dell'8%: si parte da quella dimensione
+                val dx = bounds.width * 0.04f
+                val dy = bounds.height * 0.04f
+                launching = app to Rect(bounds.left - dx, bounds.top - dy, bounds.right + dx, bounds.bottom + dy)
+            }
+        }
+    }
+    LaunchedEffect(launching) {
+        val current = launching ?: return@LaunchedEffect
+        launchProgress.snapTo(0f)
+        launchProgress.animateTo(1f, tween(340, easing = FastOutSlowInEasing))
+        vm.launch(current.first)
+        // L'app è sopra: l'effetto svanisce in silenzio, così al ritorno la home è già pulita
+        delay(1_500)
+        launchProgress.animateTo(0f, tween(200))
+        launching = null
+    }
+
     val goTop: () -> Unit = {
         scope.launch { scroll.animateScrollTo(0) }
         runCatching { firstFocus.requestFocus() }
@@ -148,6 +193,13 @@ fun LauncherScreen(vm: LauncherViewModel) {
             Column(
                 Modifier
                     .fillMaxSize()
+                    .graphicsLayer {
+                        val p = launchProgress.value
+                        val s = 1f + 0.05f * p
+                        scaleX = s
+                        scaleY = s
+                        alpha = 1f - 0.5f * p
+                    }
                     .verticalScroll(scroll),
             ) {
                 TopBar(
@@ -170,20 +222,20 @@ fun LauncherScreen(vm: LauncherViewModel) {
 
                 var first = true
                 if (state.favorites.isNotEmpty()) {
-                    AppRow(stringResource(R.string.row_favorites), state.favorites, firstFocus.takeIf { first }, vm, cardWidth = 180.dp)
+                    AppRow(stringResource(R.string.row_favorites), state.favorites, firstFocus.takeIf { first }, vm, onLaunch, cardBounds, cardWidth = 180.dp)
                     first = false
                 }
                 if (state.recents.isNotEmpty()) {
-                    AppRow(stringResource(R.string.row_recents), state.recents, firstFocus.takeIf { first }, vm, cardWidth = 150.dp)
+                    AppRow(stringResource(R.string.row_recents), state.recents, firstFocus.takeIf { first }, vm, onLaunch, cardBounds, cardWidth = 150.dp)
                     first = false
                 }
                 if (state.inputs.isNotEmpty()) {
                     InputsRow(state.inputs, onOpen = vm::openInput)
                 }
                 if (state.games.isNotEmpty()) {
-                    AppRow(stringResource(R.string.row_games), state.games, null, vm, cardWidth = 150.dp)
+                    AppRow(stringResource(R.string.row_games), state.games, null, vm, onLaunch, cardBounds, cardWidth = 150.dp)
                 }
-                AppGrid(stringResource(R.string.row_all), state.apps, firstFocus.takeIf { first }, vm)
+                AppGrid(stringResource(R.string.row_all), state.apps, firstFocus.takeIf { first }, vm, onLaunch, cardBounds)
 
                 Text(
                     text = stringResource(R.string.footer, BuildConfig.VERSION_NAME),
@@ -193,6 +245,8 @@ fun LauncherScreen(vm: LauncherViewModel) {
                 )
             }
         }
+
+        launching?.let { (app, origin) -> LaunchOverlay(app, origin, launchProgress) }
 
         if (themeSettingsOpen) {
             ThemeSettingsDialog(
@@ -260,6 +314,8 @@ private fun AppRow(
     apps: List<AppEntry>,
     firstFocus: FocusRequester?,
     vm: LauncherViewModel,
+    onLaunch: (AppEntry) -> Unit,
+    cardBounds: MutableMap<String, Rect>,
     cardWidth: Dp,
 ) {
     SectionTitle(title)
@@ -276,9 +332,10 @@ private fun AppRow(
                     app = app,
                     width = cardWidth,
                     modifier = if (index == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier,
-                    onClick = { vm.launch(app) },
+                    onClick = { onLaunch(app) },
                     onLongClick = { vm.openMenu(app) },
                     onFocused = { vm.onFocus(app) },
+                    onBounds = { cardBounds[app.packageName] = it },
                 )
             }
         }
@@ -292,6 +349,8 @@ private fun AppGrid(
     apps: List<AppEntry>,
     firstFocus: FocusRequester?,
     vm: LauncherViewModel,
+    onLaunch: (AppEntry) -> Unit,
+    cardBounds: MutableMap<String, Rect>,
 ) {
     SectionTitle(title)
     BoxWithConstraints(
@@ -311,9 +370,10 @@ private fun AppGrid(
                             app = app,
                             width = cardWidth,
                             modifier = if (r == 0 && c == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier,
-                            onClick = { vm.launch(app) },
+                            onClick = { onLaunch(app) },
                             onLongClick = { vm.openMenu(app) },
                             onFocused = { vm.onFocus(app) },
+                            onBounds = { cardBounds[app.packageName] = it },
                         )
                     }
                 }
@@ -351,4 +411,53 @@ private fun InputsRow(inputs: List<TvInput>, onOpen: (TvInput) -> Unit) {
         }
     }
     Spacer(Modifier.height(2.dp))
+}
+
+/**
+ * Livello dell'apertura: scurisce la home e fa volare il banner dell'app dalla sua card
+ * fino al centro dello schermo, ingrandendolo. Solo trasformazioni di livello: nessuna
+ * ricomposizione durante l'animazione.
+ */
+@Composable
+private fun LaunchOverlay(app: AppEntry, origin: Rect, progress: Animatable<Float, AnimationVector1D>) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val w = constraints.maxWidth.toFloat()
+        val h = constraints.maxHeight.toFloat()
+        val targetW = w * 0.5f
+        val targetH = targetW * 9f / 16f
+        val targetLeft = (w - targetW) / 2f
+        val targetTop = (h - targetH) / 2f
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = 0.9f * progress.value }
+                .background(Ink),
+        )
+        Box(
+            Modifier
+                .offset { IntOffset(origin.left.roundToInt(), origin.top.roundToInt()) }
+                .size(with(density) { origin.width.toDp() }, with(density) { origin.height.toDp() })
+                .graphicsLayer {
+                    val p = progress.value
+                    transformOrigin = TransformOrigin(0f, 0f)
+                    scaleX = 1f + (targetW / origin.width - 1f) * p
+                    scaleY = 1f + (targetH / origin.height - 1f) * p
+                    translationX = (targetLeft - origin.left) * p
+                    translationY = (targetTop - origin.top) * p
+                    shape = RoundedCornerShape(14.dp)
+                    clip = true
+                }
+                .background(Surface1),
+        ) {
+            if (app.banner != null) {
+                Image(bitmap = app.banner, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            } else {
+                Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Surface2, Surface1)))) {
+                    Image(bitmap = app.icon, contentDescription = null, modifier = Modifier.size(48.dp).align(Alignment.Center))
+                }
+            }
+        }
+    }
 }

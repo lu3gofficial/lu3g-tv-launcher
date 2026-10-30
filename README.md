@@ -20,6 +20,14 @@ pensato per TV con Android 12 e SoC economici.
 - Sfondo con aloni in movimento (12 aggiornamenti al secondo, livelli pre-rasterizzati),
   fermo quando il launcher non è in primo piano. Icone e banner limitati in dimensione.
 
+## Animazioni delle card e apertura delle app
+
+- A fuoco la card si ingrandisce con bordo ambra e alone, si solleva di qualche pixel con una molla,
+  un riflesso la attraversa una volta e dietro pulsa piano un alone (solo sulla card a fuoco).
+- Premendo OK il banner dell'app "vola" dalla card al centro dello schermo ingrandendosi, mentre la home
+  si allontana e si scurisce (340 ms); l'app parte sopra e l'effetto svanisce da solo, così al ritorno
+  la home è già pulita. Tutto in trasformazioni di livello, senza ricomposizioni per fotogramma.
+
 ## Temi stagionali
 
 Il launcher si veste da solo in base al calendario (pulsante **Tema** in alto per spegnere gli effetti o forzare un tema):
