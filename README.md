@@ -63,6 +63,33 @@ Pasqua con cinguettii, Estate con scintillio e un'onda, Autunno più grave e ven
 python3 -I tools/gen_splash_sound.py /tmp/wav && for f in /tmp/wav/*.wav; do afconvert -f m4af -d aac -b 128000 "$f" app/src/main/res/raw/$(basename "$f" .wav).m4a; done
 ```
 
+## Cerca, preferiti, salvaschermo
+
+- **Cerca** in alto apre la ricerca di Google TV (testo e voce); se non c'è, l'Assistente.
+- Dal menu di un'app tra i preferiti: **Sposta a sinistra / a destra** per riordinare la riga.
+- **Salvaschermo LU3G** (`dream/`): logo, orologio, data e decorazioni del tema; si imposta da
+  Impostazioni → Sistema → Salvaschermo o via ADB:
+  `settings put secure screensaver_components it.lu3g.tvlauncher/.dream.Lu3gDreamService`.
+- Ogni tema ha il suo jingle della splash (`res/raw/splash_<tema>.m4a`, generati da `tools/gen_splash_sound.py`).
+
+## Aggiornamenti
+
+Il launcher controlla le release di `lu3gofficial/lu3g-tv-launcher` su GitHub all'avvio e ogni 12 ore
+(API pubblica, nessuna chiave). Se c'è una versione più nuova compare il chip **Aggiorna a X** in alto;
+da lì scarica l'APK allegato alla release e lo installa con il PackageInstaller di Android (la TV può
+chiedere una conferma). Nel pannello Tema c'è anche "Versione … · Controlla aggiornamenti".
+
+Pubblicare una versione:
+
+1. aggiorna `versionCode` e `versionName` in `app/build.gradle.kts`, commit;
+2. `tools/release.sh "Note di versione"`: compila con la chiave LU3G, crea il tag `vX.Y.Z` e la release
+   con l'APK allegato.
+
+Serve `keystore.properties` sul Mac che pubblica: un APK firmato con un'altra chiave non si installa
+sopra quello presente sulla TV. Sulla TV, una volta sola, va concesso a LU3G TV di installare app
+(Impostazioni → App → Sicurezza e limitazioni → Origini sconosciute, oppure
+`adb shell appops set it.lu3g.tvlauncher REQUEST_INSTALL_PACKAGES allow`).
+
 ## Compilare
 
 Servono JDK 17 e l'SDK Android (`local.properties` → `sdk.dir`).
