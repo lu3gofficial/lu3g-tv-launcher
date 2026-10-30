@@ -4,12 +4,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -62,8 +59,8 @@ import it.lu3g.tvlauncher.ui.theme.Surface3
 /**
  * Card 16:9 di un'app. Se l'app ha un banner TV lo usa, altrimenti icona + nome su fondo zinc.
  *
- * A fuoco: si ingrandisce con bordo ambra e alone (tv-material), si solleva di qualche pixel
- * con una molla, un riflesso di luce la attraversa una volta e dietro pulsa piano un alone.
+ * A fuoco: si ingrandisce con bordo ambra e alone (tv-material), un riflesso di luce la
+ * attraversa una volta e dietro pulsa piano un alone.
  * Tutto in graphicsLayer/draw: nessuna ricomposizione per fotogramma, e l'alone pulsa solo
  * sulla card a fuoco.
  *
@@ -82,12 +79,6 @@ fun AppCard(
     val shape = RoundedCornerShape(14.dp)
     var focused by remember { mutableStateOf(false) }
 
-    // Sollevamento con molla
-    val lift by animateFloatAsState(
-        targetValue = if (focused) 1f else 0f,
-        animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow),
-        label = "lift",
-    )
     // Riflesso: parte da capo a ogni messa a fuoco
     val sheen = remember { Animatable(2f) }
     LaunchedEffect(focused) {
@@ -100,10 +91,11 @@ fun AppCard(
     }
 
     Box(
+        // Nessuna traslazione della card a fuoco: sposterebbe il suo rettangolo e la ricerca
+        // del fuoco di Android (Freccia giù) sceglierebbe la card accanto invece della riga sotto.
         modifier
             .width(width)
-            .aspectRatio(16f / 9f)
-            .graphicsLayer { translationY = -6.dp.toPx() * lift },
+            .aspectRatio(16f / 9f),
     ) {
         // Alone pulsante dietro la card a fuoco
         if (focused) {
