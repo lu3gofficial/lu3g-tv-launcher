@@ -49,7 +49,7 @@ import kotlinx.coroutines.delay
 
 /**
  * Opzioni dell'assistente vocale. Ogni voce mostra il valore attuale; OK passa al successivo.
- * [voices] è la lista (nome tecnico, etichetta) delle voci italiane disponibili.
+ * [voices] è la lista (valore salvato, etichetta) delle voci selezionabili: Paola, sistema, voci installate.
  */
 @Composable
 fun VoiceSettingsDialog(

@@ -12,3 +12,5 @@
 # Chiavi di firma: non vanno mai nel repository
 /keystore/
 /keystore.properties
+# Ambiente Piper per tools/gen_voice_clips.py (venv + modello vocale)
+/tools/.piper/

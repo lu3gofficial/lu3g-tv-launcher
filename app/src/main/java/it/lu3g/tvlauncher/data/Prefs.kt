@@ -68,7 +68,7 @@ class Prefs(context: Context) {
             enabled = sp.getBoolean(KEY_VOICE_ENABLED, d.enabled),
             intervalMin = sp.getInt(KEY_VOICE_INTERVAL, d.intervalMin),
             quiet = runCatching { QuietHours.valueOf(sp.getString(KEY_VOICE_QUIET, null) ?: d.quiet.name) }.getOrDefault(d.quiet),
-            voiceName = sp.getString(KEY_VOICE_NAME, null),
+            voiceName = sp.getString(KEY_VOICE_NAME, null) ?: d.voiceName,
             tone = runCatching { VoiceTone.valueOf(sp.getString(KEY_VOICE_TONE, null) ?: d.tone.name) }.getOrDefault(d.tone),
             volume = sp.getFloat(KEY_VOICE_VOLUME, d.volume),
             categories = sp.getString(KEY_VOICE_CATEGORIES, null)?.split(SEP)?.filter { it.isNotBlank() }?.toSet() ?: d.categories,

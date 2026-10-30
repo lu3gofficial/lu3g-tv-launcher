@@ -24,6 +24,7 @@ import it.lu3g.tvlauncher.voice.QuietHours
 import it.lu3g.tvlauncher.voice.VOICE_VOLUMES
 import it.lu3g.tvlauncher.voice.VoiceAssistant
 import it.lu3g.tvlauncher.voice.VoiceCategory
+import it.lu3g.tvlauncher.voice.VoiceNames
 import it.lu3g.tvlauncher.voice.VoiceSettings
 import it.lu3g.tvlauncher.voice.VoiceTone
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -144,9 +145,13 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     private val _voiceSettingsOpen = MutableStateFlow(false)
     val voiceSettingsOpen: StateFlow<Boolean> = _voiceSettingsOpen
 
-    /** Voci italiane disponibili (nome tecnico, etichetta leggibile). */
-    fun italianVoices(): List<Pair<String, String>> = assistant.italianVoices().mapIndexed { i, v ->
-        v.name to ("Voce ${i + 1}" + if (v.isNetworkConnectionRequired) " · online" else "")
+    /** Voci selezionabili (valore salvato, etichetta): Paola, poi la sintesi di sistema e le sue voci italiane. */
+    fun voiceOptions(): List<Pair<String, String>> {
+        val ctx = getApplication<Application>()
+        val system = assistant.italianVoices().mapIndexed { i, v ->
+            v.name to (ctx.getString(R.string.voice_system_n, i + 1) + if (v.isNetworkConnectionRequired) " · online" else "")
+        }
+        return listOf(VoiceNames.NATURAL to ctx.getString(R.string.voice_natural), VoiceNames.SYSTEM to ctx.getString(R.string.voice_default)) + system
     }
     fun ttsAvailable(): Boolean = assistant.italianVoices().isNotEmpty()
 
@@ -160,9 +165,8 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     fun cycleTone() = prefs.updateVoice { s -> s.copy(tone = VoiceTone.entries[(s.tone.ordinal + 1) % VoiceTone.entries.size]) }
     fun cycleVolume() = prefs.updateVoice { s -> s.copy(volume = VOICE_VOLUMES[(VOICE_VOLUMES.indexOfFirst { it >= s.volume - 0.01f } + 1).mod(VOICE_VOLUMES.size)]) }
     fun cycleVoice() = prefs.updateVoice { s ->
-        val names = italianVoices().map { it.first }
-        val next = if (names.isEmpty()) null else names.getOrNull(names.indexOf(s.voiceName) + 1) // oltre l'ultima: predefinita
-        s.copy(voiceName = next)
+        val names = voiceOptions().map { it.first }
+        s.copy(voiceName = names[(names.indexOf(s.voiceName) + 1) % names.size]) // voce sconosciuta: torna a Paola
     }
     fun toggleCategory(c: VoiceCategory) = prefs.updateVoice { s -> s.copy(categories = if (c.id in s.categories) s.categories - c.id else s.categories + c.id) }
 

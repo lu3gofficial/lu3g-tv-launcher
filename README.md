@@ -30,8 +30,11 @@ pensato per TV con Android 12 e SoC economici.
 
 ## Assistente vocale: pausa caffè
 
-Un assistente simpatico che, con la sintesi vocale di Android in italiano, propone una pausa dopo l'intervallo
-scelto. Sulla home compare una tazzina animata con il vapore, la frase e i tasti **Vado!** / **Tra 10 minuti**.
+Un assistente simpatico che propone una pausa dopo l'intervallo scelto, parlando con **Paola**, una voce neurale
+italiana (modello open source Piper): le frasi sono pregenerate sul Mac da `tools/gen_voice_clips.py` e incluse
+nell'app come clip audio (`res/raw/voice_<hash>.m4a`), così sulla TV non gira nessun modello, si riproduce solo un
+file. In alternativa si può scegliere la sintesi vocale di Android (la migliore voce italiana installata, o una
+precisa); la stessa sintesi fa da ripiego per le frasi senza clip. Sulla home compare una tazzina animata con il vapore, la frase e i tasti **Vado!** / **Tra 10 minuti**.
 Comportamento: parla solo quando la home è in primo piano (mai sopra un film o una videochiamata), rispetta
 l'orario di silenzio, se lo ignori allunga l'intervallo (fino al triplo), si può rimandare di dieci minuti.
 Opzioni (pulsante **Opzioni** → Assistente vocale): attivazione, intervallo, silenzio, voce, tono, volume,
@@ -80,6 +83,20 @@ Pasqua con cinguettii, Estate con scintillio e un'onda, Autunno più grave e ven
 ```bash
 python3 -I tools/gen_splash_sound.py /tmp/wav && for f in /tmp/wav/*.wav; do afconvert -f m4af -d aac -b 128000 "$f" app/src/main/res/raw/$(basename "$f" .wav).m4a; done
 ```
+
+## Clip vocali (voce Paola)
+
+`tools/gen_voice_clips.py` legge le frasi da `voice/VoiceCategories.kt` (liste `phrases`, campi `confirm`,
+`SNOOZE_PHRASE`), le sintetizza con Piper (voce `it_IT-paola-medium`) e salva `res/raw/voice_<hash>.m4a`, dove
+l'hash sono i primi 10 caratteri dello SHA-1 del testo: `VoiceAssistant` calcola lo stesso hash per trovare la clip.
+Dopo aver aggiunto o cambiato una frase:
+
+```bash
+python3 -I tools/gen_voice_clips.py
+```
+
+Al primo avvio crea `tools/.piper/` (venv con piper-tts e modello, circa 70 MB, fuori da git); le clip di frasi
+tolte vengono eliminate. `res/raw/keep.xml` impedisce allo shrinker della release di scartarle.
 
 ## Cerca, preferiti, salvaschermo
 

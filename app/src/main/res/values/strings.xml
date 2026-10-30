@@ -67,14 +67,16 @@
     <string name="voice_interval_value">%1$d minuti</string>
     <string name="voice_quiet">Orario di silenzio</string>
     <string name="voice_voice">Voce</string>
+    <string name="voice_natural">Paola (naturale)</string>
     <string name="voice_default">Predefinita del sistema</string>
+    <string name="voice_system_n">Voce di sistema %1$d</string>
     <string name="voice_tone">Tono</string>
     <string name="voice_volume">Volume</string>
     <string name="voice_volume_value">%1$d%%</string>
     <string name="voice_preview">Ascolta un esempio</string>
     <string name="voice_categories">Categorie</string>
     <string name="voice_show_now">Mostra adesso la pausa caffè</string>
-    <string name="voice_no_tts">Sintesi vocale non disponibile su questa TV: resta l\'avviso a schermo</string>
+    <string name="voice_no_tts">Sintesi vocale di sistema non disponibile su questa TV: funziona solo la voce Paola</string>
     <string name="break_go">Vado!</string>
     <string name="break_snooze">Tra 10 minuti</string>
 </resources>

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Le clip vocali (voice_<hash>.m4a) vengono cercate per nome a runtime da VoiceAssistant.clipId:
+     senza questa regola lo shrinker delle risorse della build release le toglierebbe. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@raw/voice_*" />

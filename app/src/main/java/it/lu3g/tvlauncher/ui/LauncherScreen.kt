@@ -269,7 +269,7 @@ fun LauncherScreen(vm: LauncherViewModel) {
         }
 
         if (voiceSettingsOpen) {
-            val voices = remember { vm.italianVoices() }
+            val voices = remember { vm.voiceOptions() }
             val ttsAvailable = remember { vm.ttsAvailable() }
             VoiceSettingsDialog(
                 settings = voiceSettings,
