@@ -1,5 +1,6 @@
 package it.lu3g.tvlauncher.ui.components
 
+import android.view.KeyEvent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.CubicBezierEasing
@@ -42,6 +43,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -99,6 +101,10 @@ fun AppMenuDialog(
     val scope = rememberCoroutineScope()
     val open = remember { Animatable(0f) }
     var leaving by remember { mutableStateOf(false) }
+    // Il menu si apre mentre OK è ancora premuto: le ripetizioni e il rilascio di quella pressione
+    // arrivano a questa finestra, e la voce a fuoco ("Apri") prenderebbe il rilascio per un clic.
+    // OK viene ignorato finché non arriva una pressione nuova, iniziata con il menu già aperto.
+    val okArmed = remember { booleanArrayOf(false) }
     LaunchedEffect(Unit) { open.animateTo(1f, tween(380, easing = LinearEasing)) }
     // Chiusura animata: prima il pannello rientra, poi si esegue l'azione scelta
     val leave: (() -> Unit) -> Unit = { then ->
@@ -116,7 +122,20 @@ fun AppMenuDialog(
             runCatching { first.requestFocus() }
         }
         // La finestra occupa tutto lo schermo, così il pannello può partire dalla card
-        BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        BoxWithConstraints(
+            Modifier
+                .fillMaxSize()
+                .onPreviewKeyEvent { e ->
+                    val native = e.nativeKeyEvent
+                    val isOk = native.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_ENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+                    if (!isOk) return@onPreviewKeyEvent false
+                    if (native.action == KeyEvent.ACTION_DOWN && native.repeatCount == 0) okArmed[0] = true
+                    !okArmed[0]
+                },
+            contentAlignment = Alignment.Center,
+        ) {
             val screenW = constraints.maxWidth.toFloat()
             val screenH = constraints.maxHeight.toFloat()
             var panel by remember { mutableStateOf(IntSize.Zero) }
