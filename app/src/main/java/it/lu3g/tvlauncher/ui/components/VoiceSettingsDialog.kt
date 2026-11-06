@@ -74,10 +74,12 @@ fun VoiceSettingsDialog(
             runCatching { first.requestFocus() }
         }
         val shape = RoundedCornerShape(22.dp)
+        val pop = rememberPopIn()
         Surface(
             modifier = Modifier
                 .width(500.dp)
-                .heightIn(max = 470.dp),
+                .heightIn(max = 470.dp)
+                .then(pop),
             shape = shape,
             colors = SurfaceDefaults.colors(containerColor = Surface1, contentColor = Fog),
             border = Border(BorderStroke(1.dp, Surface3), shape = shape),

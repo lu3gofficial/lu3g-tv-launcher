@@ -2,9 +2,12 @@ package it.lu3g.tvlauncher.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleOut
@@ -29,12 +32,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,11 +50,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.focus.FocusRequester
@@ -56,6 +70,9 @@ import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
@@ -70,6 +87,11 @@ import it.lu3g.tvlauncher.ui.components.AnimatedBackground
 import it.lu3g.tvlauncher.ui.components.AppCard
 import it.lu3g.tvlauncher.ui.components.AppMenuDialog
 import it.lu3g.tvlauncher.ui.components.CoffeeBreakDialog
+import it.lu3g.tvlauncher.ui.components.Decel
+import it.lu3g.tvlauncher.ui.components.FocusRingOverlay
+import it.lu3g.tvlauncher.ui.components.FocusRingState
+import it.lu3g.tvlauncher.ui.components.phase
+import it.lu3g.tvlauncher.ui.components.staggerIn
 import it.lu3g.tvlauncher.ui.components.VoiceSettingsDialog
 import it.lu3g.tvlauncher.ui.components.Hero
 import it.lu3g.tvlauncher.ui.components.HeroInfo
@@ -88,8 +110,11 @@ import it.lu3g.tvlauncher.ui.theme.Silver
 import it.lu3g.tvlauncher.ui.theme.Surface1
 import it.lu3g.tvlauncher.ui.theme.Surface2
 import it.lu3g.tvlauncher.ui.theme.Surface3
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
@@ -123,6 +148,13 @@ private val EdgeBringIntoViewSpec = object : BringIntoViewSpec {
     }
 }
 
+
+/** Quale riga ha il fuoco. Lo leggono solo le righe: cambiarlo non ricompone la schermata. */
+@Stable
+private class RowFocus {
+    var active by mutableStateOf<String?>(null)
+}
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun LauncherScreen(vm: LauncherViewModel) {
@@ -145,21 +177,25 @@ fun LauncherScreen(vm: LauncherViewModel) {
     val voiceSettingsOpen by vm.voiceSettingsOpen.collectAsStateWithLifecycle()
     val voiceSettings by vm.voiceSettings.collectAsStateWithLifecycle()
 
+    val ring = remember { FocusRingState() }
+    val rows = remember { RowFocus() }
+
+    // Ingresso della home: finita la splash, barra, intestazione e righe arrivano in sequenza.
+    // Mentre la splash copre lo schermo l'orologio è a zero e la home non viene disegnata.
+    val enter = remember { Animatable(if (vm.showSplash.value) 0f else 1f) }
+    LaunchedEffect(showSplash) {
+        if (showSplash) enter.snapTo(0f)
+        else if (enter.value < 1f) enter.animateTo(1f, tween(1000, easing = LinearEasing))
+    }
+
     // Animazione di apertura: la card "vola" verso il centro mentre la home si allontana e si scurisce
-    val cardBounds = remember { HashMap<String, Rect>() }
     var launching by remember { mutableStateOf<Pair<AppEntry, Rect>?>(null) }
     val launchProgress = remember { Animatable(0f) }
     val onLaunch: (AppEntry) -> Unit = { app ->
         if (launching == null) {
-            val bounds = cardBounds[app.packageName]
-            if (bounds == null) {
-                vm.launch(app)
-            } else {
-                // La card a fuoco è disegnata ingrandita dell'8%: si parte da quella dimensione
-                val dx = bounds.width * 0.04f
-                val dy = bounds.height * 0.04f
-                launching = app to Rect(bounds.left - dx, bounds.top - dy, bounds.right + dx, bounds.bottom + dy)
-            }
+            // Si parte dalla card a fuoco, che è quella su cui è stato premuto OK
+            val origin = ring.screenRect()
+            if (origin == null) vm.launch(app) else launching = app to origin
         }
     }
     LaunchedEffect(launching) {
@@ -172,6 +208,31 @@ fun LauncherScreen(vm: LauncherViewModel) {
         launchProgress.animateTo(0f, tween(200))
         launching = null
     }
+
+    // Ritorno dall'app: quando la home non è più visibile si prepara ingrandita e scura,
+    // e al rientro "atterra". Dopo lo standby l'atterraggio resta sotto la splash.
+    val landing = remember { Animatable(0f) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                    launching = null
+                    launchProgress.snapTo(0f)
+                    landing.snapTo(1f)
+                }
+                Lifecycle.Event.ON_START -> scope.launch { landing.animateTo(0f, tween(380, easing = Decel)) }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Con un pannello aperto la home arretra di poco
+    val panelOpen = state.menuFor != null || themeSettingsOpen || voiceSettingsOpen || breakPrompt != null ||
+        (updateDialogOpen && updateInfo != null)
+    val recede = animateFloatAsState(if (panelOpen) 1f else 0f, tween(300, easing = Decel), label = "recede")
 
     val goTop: () -> Unit = {
         scope.launch { scroll.animateScrollTo(0) }
@@ -191,63 +252,108 @@ fun LauncherScreen(vm: LauncherViewModel) {
             .fillMaxSize()
             .background(Ink),
     ) {
-        AnimatedBackground(Modifier.fillMaxSize(), tint = state.focused?.accent ?: Surface3, seasonTint = season?.tint)
+        AnimatedBackground(
+            Modifier.fillMaxSize(),
+            tint = state.focused?.accent ?: Surface3,
+            seasonTint = season?.tint,
+            scrollPx = { scroll.value },
+        )
         season?.let { SeasonalLayer(theme = it, modifier = Modifier.fillMaxSize()) }
 
         CompositionLocalProvider(LocalBringIntoViewSpec provides pivotSpec) {
-            Column(
+            Box(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
                         val p = launchProgress.value
-                        val s = 1f + 0.05f * p
+                        val q = landing.value
+                        val s = 1f + 0.05f * p + 0.045f * q - 0.035f * recede.value
                         scaleX = s
                         scaleY = s
-                        alpha = 1f - 0.5f * p
+                        alpha = (1f - 0.5f * p) * (1f - 0.55f * q)
                     }
                     .verticalScroll(scroll),
             ) {
-                TopBar(
-                    onSettings = vm::openSettings,
-                    onTheme = vm::openThemeSettings,
-                    onSearch = vm::openSearch,
-                    greeting = season?.greeting,
-                    updateLabel = updateInfo?.let { stringResource(R.string.update_chip, it.version) },
-                    onUpdate = vm::openUpdateDialog,
-                )
-                val focused = state.focused
-                Hero(
-                    info = HeroInfo(
-                        app = focused,
-                        isFavorite = focused != null && state.favorites.any { it.packageName == focused.packageName },
-                        lastLaunch = focused?.let { state.lastLaunch[it.packageName] },
-                    ),
-                    favoritesEmpty = state.favorites.isEmpty(),
-                )
+                Column(Modifier.fillMaxWidth()) {
+                    Box(Modifier.staggerIn(enter, 0, fromTop = true)) {
+                        TopBar(
+                            onSettings = vm::openSettings,
+                            onTheme = vm::openThemeSettings,
+                            onSearch = vm::openSearch,
+                            greeting = season?.greeting,
+                            updateLabel = updateInfo?.let { stringResource(R.string.update_chip, it.version) },
+                            onUpdate = vm::openUpdateDialog,
+                        )
+                    }
+                    val focused = state.focused
+                    // Intestazione: entra con le altre e, scendendo verso la griglia, si ritira e sfuma
+                    Box(
+                        Modifier.graphicsLayer {
+                            val v = enter.value
+                            val p = if (v < 1f) phase(v, 0.135f, 0.595f) else 1f
+                            val y = scroll.value.toFloat()
+                            // Sparisce entro 140 dp di scorrimento: non resta mai a metà sopra le righe
+                            val d = (y / 140.dp.toPx()).coerceIn(0f, 1f)
+                            alpha = p * (1f - d)
+                            translationY = (1f - p) * 28.dp.toPx() + y * 0.3f
+                            val k = 1f - 0.07f * d
+                            scaleX = k
+                            scaleY = k
+                            transformOrigin = TransformOrigin(0.5f, 0f)
+                        },
+                    ) {
+                        Hero(
+                            info = HeroInfo(
+                                app = focused,
+                                isFavorite = focused != null && state.favorites.any { it.packageName == focused.packageName },
+                                lastLaunch = focused?.let { state.lastLaunch[it.packageName] },
+                            ),
+                            favoritesEmpty = state.favorites.isEmpty(),
+                        )
+                    }
 
-                var first = true
-                if (state.favorites.isNotEmpty()) {
-                    AppRow(stringResource(R.string.row_favorites), state.favorites, firstFocus.takeIf { first }, vm, onLaunch, cardBounds, cardWidth = 180.dp)
-                    first = false
-                }
-                if (state.recents.isNotEmpty()) {
-                    AppRow(stringResource(R.string.row_recents), state.recents, firstFocus.takeIf { first }, vm, onLaunch, cardBounds, cardWidth = 150.dp)
-                    first = false
-                }
-                if (state.inputs.isNotEmpty()) {
-                    InputsRow(state.inputs, onOpen = vm::openInput)
-                }
-                if (state.games.isNotEmpty()) {
-                    AppRow(stringResource(R.string.row_games), state.games, null, vm, onLaunch, cardBounds, cardWidth = 150.dp)
-                }
-                AppGrid(stringResource(R.string.row_all), state.apps, firstFocus.takeIf { first }, vm, onLaunch, cardBounds)
+                    var index = 2
+                    var first = true
+                    if (state.favorites.isNotEmpty()) {
+                        val focus = firstFocus.takeIf { first }
+                        Section("fav", stringResource(R.string.row_favorites), rows, enter, index++) {
+                            AppRow(state.favorites, focus, vm, onLaunch, ring, cardWidth = 180.dp, pinStart = false)
+                        }
+                        first = false
+                    }
+                    if (state.recents.isNotEmpty()) {
+                        val focus = firstFocus.takeIf { first }
+                        Section("rec", stringResource(R.string.row_recents), rows, enter, index++) {
+                            AppRow(state.recents, focus, vm, onLaunch, ring, cardWidth = 150.dp, pinStart = true)
+                        }
+                        first = false
+                    }
+                    if (state.inputs.isNotEmpty()) {
+                        Section("inputs", stringResource(R.string.row_inputs), rows, enter, index++) {
+                            InputsRow(state.inputs, onOpen = vm::openInput)
+                        }
+                    }
+                    if (state.games.isNotEmpty()) {
+                        Section("games", stringResource(R.string.row_games), rows, enter, index++) {
+                            AppRow(state.games, null, vm, onLaunch, ring, cardWidth = 150.dp, pinStart = false)
+                        }
+                    }
+                    val gridFocus = firstFocus.takeIf { first }
+                    Section("all", stringResource(R.string.row_all), rows, enter, index++) {
+                        AppGrid(state.apps, gridFocus, vm, onLaunch, ring)
+                    }
 
-                Text(
-                    text = stringResource(R.string.footer, BuildConfig.VERSION_NAME),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Dim,
-                    modifier = Modifier.padding(start = GUTTER, top = 28.dp, bottom = 40.dp),
-                )
+                    Text(
+                        text = stringResource(R.string.footer, BuildConfig.VERSION_NAME),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Dim,
+                        modifier = Modifier
+                            .staggerIn(enter, index)
+                            .padding(start = GUTTER, top = 28.dp, bottom = 40.dp),
+                    )
+                }
+                // Anello di fuoco: dentro il contenuto che scorre, sopra le righe
+                FocusRingOverlay(ring, enter, Modifier.matchParentSize())
             }
         }
 
@@ -309,15 +415,18 @@ fun LauncherScreen(vm: LauncherViewModel) {
         }
 
         state.menuFor?.let { app ->
+            // Il pannello nasce dalla card a fuoco: se ne prende la posizione all'apertura
+            val origin = remember(app.packageName) { ring.screenRect() }
             AppMenuDialog(
                 app = app,
+                origin = origin,
                 isFavorite = state.menuIsFavorite,
                 favoriteIndex = state.menuFavoriteIndex,
                 favoritesCount = state.favorites.size,
                 onMoveLeft = { vm.moveFavorite(app, -1) },
                 onMoveRight = { vm.moveFavorite(app, +1) },
                 onDismiss = vm::closeMenu,
-                onOpen = { vm.closeMenu(); vm.launch(app) },
+                onOpen = { vm.closeMenu(); onLaunch(app) },
                 onToggleFavorite = { vm.toggleFavorite(app); vm.closeMenu() },
                 onInfo = { vm.closeMenu(); vm.openAppInfo(app) },
                 onUninstall = { vm.closeMenu(); vm.uninstall(app) },
@@ -333,30 +442,95 @@ fun LauncherScreen(vm: LauncherViewModel) {
     }
 }
 
+/**
+ * Una riga della home con il suo titolo. Entra a cascata dopo la splash; quando ha il fuoco
+ * il titolo si accende con un trattino ambra e le altre righe si attenuano.
+ * L'attenuazione modula l'alfa dei singoli disegni: nessun livello fuori schermo.
+ */
 @Composable
-private fun SectionTitle(text: String) {
+private fun Section(
+    id: String,
+    title: String,
+    rows: RowFocus,
+    enter: Animatable<Float, AnimationVector1D>,
+    index: Int,
+    content: @Composable () -> Unit,
+) {
+    val active = rows.active
+    val isActive = active == id
+    val dim = animateFloatAsState(if (active == null || isActive) 1f else 0.45f, tween(240), label = "dim")
+    Column(
+        Modifier
+            .staggerIn(enter, index)
+            .onFocusChanged { f ->
+                if (f.hasFocus) rows.active = id else if (rows.active == id) rows.active = null
+            },
+    ) {
+        SectionTitle(title, isActive)
+        Box(
+            Modifier.graphicsLayer {
+                alpha = dim.value
+                compositingStrategy = CompositingStrategy.ModulateAlpha
+            },
+        ) { content() }
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String, active: Boolean) {
+    val color by animateColorAsState(if (active) Fog else Silver, tween(240), label = "title")
+    val dash = animateFloatAsState(if (active) 1f else 0f, tween(260, easing = Decel), label = "dash")
     Text(
         text = text,
         style = MaterialTheme.typography.titleMedium,
-        color = Silver,
-        modifier = Modifier.padding(start = GUTTER, top = 14.dp),
+        color = color,
+        modifier = Modifier
+            .padding(start = GUTTER, top = 14.dp)
+            .drawBehind {
+                val w = 18.dp.toPx() * dash.value
+                if (w > 0.5f) {
+                    val h = 3.dp.toPx()
+                    drawRoundRect(Amber, Offset(0f, (size.height - h) / 2f), Size(w, h), CornerRadius(h / 2f))
+                }
+            }
+            // Il testo si sposta a destra per fare posto al trattino: solo posizionamento, nessuna ricomposizione
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                val shift = (28.dp.toPx() * dash.value).roundToInt()
+                layout(placeable.width + shift, placeable.height) { placeable.place(shift, 0) }
+            },
     )
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 private fun AppRow(
-    title: String,
     apps: List<AppEntry>,
     firstFocus: FocusRequester?,
     vm: LauncherViewModel,
     onLaunch: (AppEntry) -> Unit,
-    cardBounds: MutableMap<String, Rect>,
+    ring: FocusRingState,
     cardWidth: Dp,
+    pinStart: Boolean,
 ) {
-    SectionTitle(title)
+    val listState = rememberLazyListState()
+    // Quando l'ordine cambia, la lista terrebbe fermo il primo elemento visibile (per chiave) e
+    // la card spostata potrebbe uscire di scena. Si tiene ferma la vista (o si torna all'inizio,
+    // per le recenti) e sono le card a scivolare al loro posto.
+    val lastOrder = remember { arrayOf("") }
+    val order = apps.joinToString("|") { it.packageName }
+    SideEffect {
+        if (lastOrder[0] != order) {
+            if (lastOrder[0].isNotEmpty()) {
+                if (pinStart) listState.requestScrollToItem(0)
+                else listState.requestScrollToItem(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
+            }
+            lastOrder[0] = order
+        }
+    }
     CompositionLocalProvider(LocalBringIntoViewSpec provides EdgeBringIntoViewSpec) {
         LazyRow(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRestorer(),
@@ -367,11 +541,13 @@ private fun AppRow(
                 AppCard(
                     app = app,
                     width = cardWidth,
-                    modifier = if (index == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier,
+                    ring = ring,
+                    modifier = Modifier
+                        .animateItem()
+                        .then(if (index == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier),
                     onClick = { onLaunch(app) },
                     onLongClick = { vm.openMenu(app) },
                     onFocused = { vm.onFocus(app) },
-                    onBounds = { cardBounds[app.packageName] = it },
                 )
             }
         }
@@ -381,14 +557,12 @@ private fun AppRow(
 /** Griglia a righe fisse: il numero di colonne dipende dalla larghezza disponibile. */
 @Composable
 private fun AppGrid(
-    title: String,
     apps: List<AppEntry>,
     firstFocus: FocusRequester?,
     vm: LauncherViewModel,
     onLaunch: (AppEntry) -> Unit,
-    cardBounds: MutableMap<String, Rect>,
+    ring: FocusRingState,
 ) {
-    SectionTitle(title)
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
@@ -405,11 +579,11 @@ private fun AppGrid(
                         AppCard(
                             app = app,
                             width = cardWidth,
+                            ring = ring,
                             modifier = if (r == 0 && c == 0 && firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier,
                             onClick = { onLaunch(app) },
                             onLongClick = { vm.openMenu(app) },
                             onFocused = { vm.onFocus(app) },
-                            onBounds = { cardBounds[app.packageName] = it },
                         )
                     }
                 }
@@ -422,7 +596,6 @@ private fun AppGrid(
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 private fun InputsRow(inputs: List<TvInput>, onOpen: (TvInput) -> Unit) {
-    SectionTitle(stringResource(R.string.row_inputs))
     CompositionLocalProvider(LocalBringIntoViewSpec provides EdgeBringIntoViewSpec) {
         LazyRow(
             modifier = Modifier
@@ -450,9 +623,9 @@ private fun InputsRow(inputs: List<TvInput>, onOpen: (TvInput) -> Unit) {
 }
 
 /**
- * Livello dell'apertura: scurisce la home e fa volare il banner dell'app dalla sua card
- * fino al centro dello schermo, ingrandendolo. Solo trasformazioni di livello: nessuna
- * ricomposizione durante l'animazione.
+ * Livello dell'apertura: scurisce la home, allarga dalla card il colore dell'app fino a
+ * riempire lo schermo e fa volare il banner dalla card al centro, ingrandendolo.
+ * Solo trasformazioni di livello e un cerchio: nessuna ricomposizione durante l'animazione.
  */
 @Composable
 private fun LaunchOverlay(app: AppEntry, origin: Rect, progress: Animatable<Float, AnimationVector1D>) {
@@ -470,6 +643,20 @@ private fun LaunchOverlay(app: AppEntry, origin: Rect, progress: Animatable<Floa
                 .fillMaxSize()
                 .graphicsLayer { alpha = 0.9f * progress.value }
                 .background(Ink),
+        )
+        // Colore dell'app che si allarga dalla card
+        Box(
+            Modifier
+                .fillMaxSize()
+                .drawBehind {
+                    val p = progress.value
+                    if (p > 0f) {
+                        val c = origin.center
+                        val from = origin.height * 0.3f
+                        val full = hypot(max(c.x, size.width - c.x), max(c.y, size.height - c.y))
+                        drawCircle(app.accent, radius = from + (full - from) * p, center = c)
+                    }
+                },
         )
         Box(
             Modifier

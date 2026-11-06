@@ -1,5 +1,7 @@
 package it.lu3g.tvlauncher.ui.components
 
+import android.view.KeyEvent
+import android.view.ViewConfiguration
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -8,7 +10,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,18 +33,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Glow
 import androidx.tv.material3.MaterialTheme
@@ -59,25 +60,29 @@ import it.lu3g.tvlauncher.ui.theme.Surface3
 /**
  * Card 16:9 di un'app. Se l'app ha un banner TV lo usa, altrimenti icona + nome su fondo zinc.
  *
- * A fuoco: si ingrandisce con bordo ambra e alone (tv-material), un riflesso di luce la
- * attraversa una volta e dietro pulsa piano un alone.
+ * A fuoco: si ingrandisce con l'alone (tv-material), un riflesso di luce la attraversa una
+ * volta e dietro pulsa piano un alone. Il bordo ambra non è suo: è l'anello condiviso
+ * ([FocusRingState]) che scivola da una card all'altra; la card gli consegna la propria
+ * posizione. Tenendo premuto OK l'anello si riempie fino all'apertura del menu.
  * Tutto in graphicsLayer/draw: nessuna ricomposizione per fotogramma, e l'alone pulsa solo
  * sulla card a fuoco.
- *
- * [onBounds] riceve la posizione della card nello schermo: serve all'animazione di apertura.
  */
 @Composable
 fun AppCard(
     app: AppEntry,
     width: Dp,
+    ring: FocusRingState,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onFocused: () -> Unit,
-    onBounds: (Rect) -> Unit = {},
 ) {
     val shape = RoundedCornerShape(14.dp)
     var focused by remember { mutableStateOf(false) }
+    // Identità della card per l'anello, e ultime coordinate note (non sono stato: niente ricomposizioni)
+    val me = remember { Any() }
+    val coords = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    DisposableEffect(ring) { onDispose { ring.blur(me) } }
 
     // Riflesso: parte da capo a ogni messa a fuoco
     val sheen = remember { Animatable(2f) }
@@ -88,6 +93,23 @@ fun AppCard(
         } else {
             sheen.snapTo(2f)
         }
+    }
+
+    // Pressione lunga: il menu si apre alla prima ripetizione del tasto, cioè dopo questo tempo.
+    // L'anello parte con un piccolo ritardo, così un OK breve non lo fa lampeggiare.
+    var holding by remember { mutableStateOf(false) }
+    LaunchedEffect(holding) {
+        if (holding) {
+            val total = ViewConfiguration.getKeyRepeatTimeout().coerceAtLeast(200)
+            ring.hold.snapTo(0f)
+            ring.hold.animateTo(1f, tween(total - 90, delayMillis = 90, easing = LinearEasing))
+        } else if (ring.owns(me)) {
+            ring.hold.snapTo(0f)
+        }
+    }
+    val release = {
+        holding = false
+        if (ring.owns(me)) ring.pressed = false
     }
 
     Box(
@@ -121,14 +143,44 @@ fun AppCard(
 
         Surface(
             onClick = onClick,
-            onLongClick = onLongClick,
+            onLongClick = {
+                release()
+                onLongClick()
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .onFocusChanged {
                     focused = it.isFocused
-                    if (it.isFocused) onFocused()
+                    if (it.isFocused) {
+                        ring.focus(me, coords[0])
+                        onFocused()
+                    } else {
+                        holding = false
+                        ring.blur(me)
+                    }
                 }
-                .onGloballyPositioned { onBounds(it.boundsInRoot()) },
+                .onGloballyPositioned {
+                    coords[0] = it
+                    ring.moved(me, it)
+                }
+                // Solo per osservare OK premuto/rilasciato: l'evento prosegue fino alla Surface
+                .onPreviewKeyEvent { e ->
+                    val native = e.nativeKeyEvent
+                    val isOk = native.keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_ENTER ||
+                        native.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+                    if (isOk) {
+                        if (native.action == KeyEvent.ACTION_DOWN) {
+                            if (native.repeatCount == 0 && ring.owns(me)) {
+                                holding = true
+                                ring.pressed = true
+                            }
+                        } else if (native.action == KeyEvent.ACTION_UP) {
+                            release()
+                        }
+                    }
+                    false
+                },
             shape = ClickableSurfaceDefaults.shape(shape = shape),
             colors = ClickableSurfaceDefaults.colors(
                 containerColor = Surface1,
@@ -139,9 +191,6 @@ fun AppCard(
                 pressedContentColor = Fog,
             ),
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f, pressedScale = 1.02f),
-            border = ClickableSurfaceDefaults.border(
-                focusedBorder = Border(BorderStroke(3.dp, Amber), inset = 0.dp, shape = shape),
-            ),
             glow = ClickableSurfaceDefaults.glow(
                 focusedGlow = Glow(elevationColor = Amber.copy(alpha = 0.55f), elevation = 18.dp),
             ),

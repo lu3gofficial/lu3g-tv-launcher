@@ -91,6 +91,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         vm.setForeground(true)
+        // Anche dopo un pannello che non copre tutto lo schermo (Impostazioni): lì non c'è onStart
+        vm.onHomeShown()
     }
 
     override fun onPause() {

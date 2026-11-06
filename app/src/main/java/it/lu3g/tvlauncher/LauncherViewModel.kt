@@ -233,7 +233,23 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
         val lastLaunch: Map<String, Long>,
     )
 
-    private val catalog = combine(apps, prefs.favorites, prefs.recents, prefs.lastLaunch) { list, favs, recents, last ->
+    /**
+     * Recenti mostrate in home. Mentre un'app è aperta restano ferme e si aggiornano al
+     * rientro, così la card dell'app appena usata scivola in testa sotto gli occhi.
+     */
+    private val shownRecents = MutableStateFlow(prefs.recents.value)
+    private var awayForApp = false
+
+    /** La home è di nuovo visibile: un attimo dopo l'atterraggio le recenti si aggiornano. */
+    fun onHomeShown() {
+        awayForApp = false
+        viewModelScope.launch {
+            delay(350)
+            shownRecents.value = prefs.recents.value
+        }
+    }
+
+    private val catalog = combine(apps, prefs.favorites, shownRecents, prefs.lastLaunch) { list, favs, recents, last ->
         val byPkg = list.associateBy { it.packageName }
         Catalog(
             all = list,
@@ -262,6 +278,10 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refresh()
+        // Cambi alle recenti che non vengono da un'apertura (per esempio un'app rimossa): subito
+        viewModelScope.launch {
+            prefs.recents.collect { if (!awayForApp) shownRecents.value = it }
+        }
         // Pianificatore delle pause: controllo ogni 30 secondi, mai sopra altre finestre
         viewModelScope.launch {
             while (true) {
@@ -309,8 +329,14 @@ class LauncherViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun launch(app: AppEntry) {
+        awayForApp = true
         prefs.recordLaunch(app.packageName)
         start(app.launchIntent)
+        // Se l'app non è partita la home resta in primo piano: le recenti si aggiornano lo stesso
+        viewModelScope.launch {
+            delay(3_000)
+            if (awayForApp && foreground.value) onHomeShown()
+        }
     }
 
     fun openMenu(app: AppEntry) {

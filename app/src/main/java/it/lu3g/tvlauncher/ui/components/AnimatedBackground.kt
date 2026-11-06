@@ -44,9 +44,19 @@ import kotlin.math.min
  *  - la posizione si aggiorna 12 volte al secondo invece di 60: con un periodo
  *    di 16-23 secondi lo spostamento per passo è di circa un pixel, invisibile;
  *  - l'animazione gira solo quando il launcher è in primo piano (RESUMED).
+ *
+ * Con [scrollPx] aloni e filigrana seguono lo scorrimento della home a un sesto della
+ * velocità: è solo una traslazione in più sugli stessi livelli.
  */
 @Composable
-fun AnimatedBackground(modifier: Modifier = Modifier, tint: Color, seasonTint: Color? = null, animate: Boolean = true) {
+fun AnimatedBackground(
+    modifier: Modifier = Modifier,
+    tint: Color,
+    seasonTint: Color? = null,
+    animate: Boolean = true,
+    /** Scorrimento della home in pixel: aloni e filigrana si muovono più lenti del contenuto. */
+    scrollPx: () -> Int = { 0 },
+) {
     // Alone del brand: ambra, o la tinta del tema stagionale quando c'è
     val brandAnim by animateColorAsState(targetValue = seasonTint ?: Amber, animationSpec = tween(900), label = "brand")
     val brandAlpha = if (seasonTint != null) 0.2f else 0.10f
@@ -85,6 +95,7 @@ fun AnimatedBackground(modifier: Modifier = Modifier, tint: Color, seasonTint: C
                 .offset(x = maxWidth * 0.86f - gT / 2, y = maxHeight * 0.06f - gT / 2)
                 .graphicsLayer {
                     translationX = wPx * 0.04f * phaseB.floatValue
+                    translationY = -scrollPx() * PARALLAX
                     scaleX = 3.3f
                     scaleY = 2.7f
                     compositingStrategy = CompositingStrategy.Offscreen
@@ -100,7 +111,7 @@ fun AnimatedBackground(modifier: Modifier = Modifier, tint: Color, seasonTint: C
                 .offset(x = maxWidth * 0.78f - gA / 2, y = maxHeight * 0.05f - gA / 2)
                 .graphicsLayer {
                     translationX = wPx * 0.08f * phaseA.floatValue
-                    translationY = hPx * 0.2f * phaseB.floatValue
+                    translationY = hPx * 0.2f * phaseB.floatValue - scrollPx() * PARALLAX
                     scaleX = 3.4f
                     scaleY = 3.4f
                     compositingStrategy = CompositingStrategy.Offscreen
@@ -116,7 +127,7 @@ fun AnimatedBackground(modifier: Modifier = Modifier, tint: Color, seasonTint: C
                 .offset(x = maxWidth * 0.1f - gB / 2, y = maxHeight * 0.95f - gB / 2)
                 .graphicsLayer {
                     translationX = wPx * 0.12f * phaseB.floatValue
-                    translationY = -hPx * 0.15f * phaseA.floatValue
+                    translationY = -hPx * 0.15f * phaseA.floatValue - scrollPx() * PARALLAX
                     scaleX = 3.4f
                     scaleY = 3.4f
                     compositingStrategy = CompositingStrategy.Offscreen
@@ -130,11 +141,14 @@ fun AnimatedBackground(modifier: Modifier = Modifier, tint: Color, seasonTint: C
             contentDescription = null,
             modifier = Modifier
                 .offset(x = maxWidth - logo * 0.6f, y = maxHeight - logo * 0.52f)
-                .size(logo),
+                .size(logo)
+                .graphicsLayer { translationY = -scrollPx() * PARALLAX },
             alpha = 0.035f,
         )
     }
 }
+
+private const val PARALLAX = 0.16f
 
 @Composable
 private fun Glow(color: Color, size: Dp, modifier: Modifier) {

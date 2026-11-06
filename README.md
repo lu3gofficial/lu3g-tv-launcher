@@ -20,13 +20,34 @@ pensato per TV con Android 12 e SoC economici.
 - Sfondo con aloni in movimento (12 aggiornamenti al secondo, livelli pre-rasterizzati),
   fermo quando il launcher non è in primo piano. Icone e banner limitati in dimensione.
 
-## Animazioni delle card e apertura delle app
+## Animazioni
 
-- A fuoco la card si ingrandisce con bordo ambra e alone, si solleva di qualche pixel con una molla,
-  un riflesso la attraversa una volta e dietro pulsa piano un alone (solo sulla card a fuoco).
-- Premendo OK il banner dell'app "vola" dalla card al centro dello schermo ingrandendosi, mentre la home
-  si allontana e si scurisce (340 ms); l'app parte sopra e l'effetto svanisce da solo, così al ritorno
-  la home è già pulita. Tutto in trasformazioni di livello, senza ricomposizioni per fotogramma.
+Dalla versione 1.5.0. Regola comune: i valori animati si leggono solo dentro `graphicsLayer` o nel disegno,
+quindi nessuna animazione ricompone la schermata; quasi tutte partono a un evento e poi si fermano.
+Gli aiuti comuni (curve, ingresso a cascata, anello di fuoco) stanno in `ui/components/Motion.kt`.
+
+- **Ingresso della home**: finita la splash arrivano in sequenza barra, intestazione e righe (un secondo in tutto).
+  Mentre la splash copre lo schermo la home non viene disegnata.
+- **Anello di fuoco**: un solo bordo ambra che scivola da una card all'altra (`FocusRingState`, `FocusRingOverlay`).
+  La card a fuoco consegna le proprie coordinate; l'anello le insegue solo per mezzo secondo dopo ogni spostamento,
+  poi si ferma. La card continua a ingrandirsi con alone e riflesso, ma non viene mai traslata: sposterebbe il suo
+  rettangolo e Freccia giù sceglierebbe la card accanto invece della riga sotto.
+- **Pressione lunga visibile**: tenendo premuto OK l'anello si riempie di bianco fino all'apertura del menu
+  (il tempo è quello di ripetizione del tasto, lo stesso che usa tv-material per il clic lungo).
+- **Riga attiva**: il titolo della riga a fuoco si accende con un trattino ambra, le altre righe si attenuano
+  (alfa modulata sui singoli disegni, senza livelli fuori schermo).
+- **Profondità**: scendendo l'intestazione si ritira e sfuma entro 140 dp, aloni e filigrana dello sfondo
+  si muovono a un sesto della velocità del contenuto.
+- **Menu dell'app**: il pannello cresce dalla card a fuoco, le voci entrano in cascata, la home arretra;
+  alla chiusura torna alla card. Opzioni, Voce e Aggiornamento compaiono crescendo appena.
+- **Card che scivolano**: nelle righe le card cambiano posto scorrendo (`animateItem`), per esempio spostando
+  un preferito. Le recenti si aggiornano al rientro in home, così la card dell'app appena usata scivola in testa.
+- **Apertura**: premendo OK il banner "vola" dalla card al centro, il colore dominante dell'app si allarga dalla
+  card fino a riempire lo schermo e la home si allontana e si scurisce (340 ms).
+- **Ritorno**: quando la home non è più visibile si prepara ingrandita e scura, e al rientro atterra (380 ms).
+  Con i pannelli che non coprono tutto lo schermo, come le Impostazioni di Google TV, non c'è atterraggio.
+- **Barra in alto**: le cifre dell'orologio scorrono al cambio di minuto; al fuoco la lente si inclina e
+  l'ingranaggio fa un quarto di giro.
 
 ## Assistente vocale: pausa caffè
 

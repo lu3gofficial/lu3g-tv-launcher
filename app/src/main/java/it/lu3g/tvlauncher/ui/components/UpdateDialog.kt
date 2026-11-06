@@ -53,8 +53,9 @@ fun UpdateDialog(info: UpdateInfo, state: UpdateState, onUpdate: () -> Unit, onD
             runCatching { first.requestFocus() }
         }
         val shape = RoundedCornerShape(22.dp)
+        val pop = rememberPopIn()
         Surface(
-            modifier = Modifier.width(480.dp),
+            modifier = Modifier.width(480.dp).then(pop),
             shape = shape,
             colors = SurfaceDefaults.colors(containerColor = Surface1, contentColor = Fog),
             border = Border(BorderStroke(1.dp, Surface3), shape = shape),
